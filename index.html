@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Usagi Ăn Cả Thế Giới</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Varela+Round&display=swap');
+        body { margin: 0; overflow: hidden; background: #fdfcf0; font-family: 'Varela Round', sans-serif; cursor: none; }
+        #game-container { position: relative; width: 100vw; height: 100vh; background: linear-gradient(to bottom, #e0f7fa, #fff9c4); }
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; }
+        .score-box { background: rgba(255,255,255,0.8); padding: 10px 20px; border-radius: 15px; border: 3px solid #ff8fa3; box-shadow: 4px 4px 0px rgba(0,0,0,0.1); }
+        #overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; cursor: default; }
+        .menu-content { background: white; padding: 40px; border-radius: 40px; border: 5px solid #ff8fa3; text-align: center; box-shadow: 0 10px 0 #ff5c7c; }
+        .play-button { background: #ff8fa3; color: white; border: none; padding: 15px 60px; font-size: 28px; border-radius: 50px; cursor: pointer; font-family: inherit; font-weight: bold; box-shadow: 0 5px 0 #ff5c7c; }
+        .hidden { display: none !important; }
+        /* Thêm thông báo nếu ảnh lỗi */
+        #error-msg { position: absolute; bottom: 10px; left: 10px; color: red; background: white; padding: 5px; display: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <div class="score-box">
+            <div style="font-size: 24px; color: #ff6b6b;">Điểm: <span id="score">0</span></div>
+            <div style="font-size: 14px; color: #888;">Kỷ lục: <span id="high-score">0</span></div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <div class="menu-content">
+            <img src="usagi1.png" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid #ff8fa3; margin-bottom: 10px;">
+            <h1 style="color: #ff8fa3; font-size: 30px; margin: 10px 0;">USAGI ĐÓI BỤNG! 🐰</h1>
+            <p>Di chuột để ăn đồ ăn ngon nhé!</p>
+            <button class="play-button" id="start-btn">CHƠI NGAY</button>
+        </div>
+    </div>
+    <div id="error-msg">Không tìm thấy ảnh! Hãy kiểm tra tên file: usagi1.png và usagi.jpg</div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // --- CẤU HÌNH ẢNH ---
+    const imgNormal = new Image();
+    imgNormal.src = 'usagi1.png'; // Đã sửa thành .png
+    imgNormal.onerror = () => document.getElementById('error-msg').style.display = 'block';
+
+    const imgEating = new Image();
+    imgEating.src = 'usagi.jpg';  // Đã sửa thành .jpg
+    imgEating.onerror = () => document.getElementById('error-msg').style.display = 'block';
+
+    let width, height, score = 0, gameActive = false;
+    let items = [], frame = 0, speed = 4;
+    let isEatingTimer = 0; 
+    const player = { x: 0, y: 0, size: 90 }; // Tăng size lên 90 cho rõ
+
+    function playSound(freq, duration) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function resize() {
+        width = window.innerWidth; height = window.innerHeight;
+        canvas.width = width; canvas.height = height;
+        player.y = height - 130;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    window.onmousemove = (e) => { player.x = e.clientX; };
+
+    document.getElementById('start-btn').onclick = () => {
+        document.getElementById('overlay').classList.add('hidden');
+        score = 0; items = []; speed = 5; frame = 0;
+        document.getElementById('score').innerText = '0';
+        gameActive = true;
+        update();
+    };
+
+    function spawn() {
+        const r = Math.random();
+        let item = { x: Math.random() * (width - 50) + 25, y: -60, rot: 0, size: 50 };
+        // Tỉ lệ: 70% đồ ăn, 30% quái vật
+        if (r > 0.3) { 
+            // List đồ ăn ngẫu nhiên
+            const foods = ['🍰', '🥐', '🍗', '🍕', '🌭', '🍣'];
+            item.e = foods[Math.floor(Math.random() * foods.length)];
+            item.type = 'good'; 
+        } else { 
+            item.e = '👺'; 
+            item.type = 'bad'; 
+            item.size = 60; 
+        }
+        items.push(item);
+    }
+
+    function update() {
+        if (!gameActive) return;
+        ctx.clearRect(0, 0, width, height);
+        frame++;
+
+        // --- VẼ USAGI ---
+        // Nếu timer > 0 thì vẽ ảnh đang ăn, ngược lại vẽ ảnh thường
+        const currentImg = (isEatingTimer > 0) ? imgEating : imgNormal;
+        
+        if (isEatingTimer > 0) isEatingTimer--;
+
+        // Vẽ ảnh Usagi
+        ctx.drawImage(
+            currentImg, 
+            player.x - player.size/2, 
+            player.y - player.size/2, 
+            player.size, 
+            player.size
+        );
+
+        // Sinh vật phẩm
+        if (frame % Math.max(15, 45 - Math.floor(score/5)) === 0) spawn();
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            let o = items[i];
+            o.y += speed + (score/25); // Tăng tốc độ rơi
+            o.rot += 0.03;
+            
+            ctx.save();
+            ctx.translate(o.x, o.y);
+            ctx.rotate(o.rot);
+            ctx.font = o.size + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(o.e, 0, 0);
+            ctx.restore();
+
+            // Xử lý va chạm
+            if (Math.hypot(player.x - o.x, player.y - o.y) < 60) {
+                if (o.type === 'bad') {
+                    // THUA CUỘC
+                    gameActive = false;
+                    playSound(150, 0.5);
+                    document.getElementById('overlay').classList.remove('hidden');
+                    document.body.style.cursor = 'default';
+                    // Lưu điểm cao
+                    const oldHigh = localStorage.getItem('usagi_score') || 0;
+                    if(score > oldHigh) {
+                        localStorage.setItem('usagi_score', score);
+                        document.getElementById('high-score').innerText = score;
+                    }
+                } else {
+                    // ĂN ĐIỂM
+                    score += 1;
+                    document.getElementById('score').innerText = score;
+                    playSound(800 + Math.random()*200, 0.1); // Tiếng ting ting
+                    
+                    // Kích hoạt trạng thái ăn trong 20 khung hình (khoảng 0.3s)
+                    isEatingTimer = 20; 
+                    
+                    items.splice(i, 1);
+                }
+            } else if (o.y > height + 50) items.splice(i, 1);
+        }
+        requestAnimationFrame(update);
+    }
+    
+    // Load điểm cao cũ
+    document.getElementById('high-score').innerText = localStorage.getItem('usagi_score') || 0;
+</script>
+</body>
+</html>
