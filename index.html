@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Usagi Ăn Cả Thế Giới</title>
+    <title>Usagi ăn con mẹ mày</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Varela+Round&display=swap');
         body { margin: 0; overflow: hidden; background: #fdfcf0; font-family: 'Varela Round', sans-serif; cursor: none; }
@@ -94,11 +94,11 @@
         // Tỉ lệ: 70% đồ ăn, 30% quái vật
         if (r > 0.3) { 
             // List đồ ăn ngẫu nhiên
-            const foods = ['🍰', '🥐', '🍗', '🍕', '🌭', '🍣'];
+            const foods = ['🍰', '🥐', '🍗', '🍕', '🌭', '🍣','🥚','🍖'];
             item.e = foods[Math.floor(Math.random() * foods.length)];
             item.type = 'good'; 
         } else { 
-            item.e = '👺'; 
+            item.e = ['👺','🥩']; 
             item.type = 'bad'; 
             item.size = 60; 
         }
