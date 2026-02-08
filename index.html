@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Usagi ăn cả nhà mày</title>
+    <title>Usagi ăn cả nhà mày!</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Varela+Round&display=swap');
         
@@ -27,11 +27,18 @@
             z-index: 10; pointer-events: none; 
         }
 
-        .score-box { 
-            background: rgba(255,255,255,0.8); 
+        .info-box { 
+            background: rgba(255,255,255,0.9); 
             padding: 10px 20px; border-radius: 15px; 
             border: 3px solid #ff8fa3; 
             box-shadow: 4px 4px 0px rgba(0,0,0,0.1); 
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+        /* Thanh máu */
+        #hearts {
+            font-size: 24px; letter-spacing: 5px;
         }
 
         #overlay { 
@@ -46,7 +53,7 @@
             background: white; padding: 30px; 
             border-radius: 40px; border: 5px solid #ff8fa3; 
             text-align: center; box-shadow: 0 10px 0 #ff5c7c; 
-            width: 80%; max-width: 400px;
+            width: 85%; max-width: 400px;
         }
 
         .play-button { 
@@ -58,14 +65,17 @@
         .play-button:active { transform: translateY(3px); box-shadow: 0 2px 0 #ff5c7c; }
 
         .hidden { display: none !important; }
-        #error-msg { position: absolute; bottom: 10px; left: 10px; color: red; background: white; padding: 5px; display: none; z-index: 200; font-size: 12px; }
+        #error-msg { position: absolute; bottom: 10px; left: 10px; color: red; font-size: 12px; display: none; }
         
-        /* Nút tắt/bật nhạc góc màn hình */
         #mute-btn {
             position: absolute; top: 20px; right: 20px; z-index: 20;
             background: rgba(255,255,255,0.6); padding: 8px; border-radius: 50%;
             cursor: pointer; font-size: 20px; border: 2px solid #ff8fa3;
         }
+        
+        /* Hiệu ứng rung màn hình khi mất máu */
+        .shake { animation: shake 0.4s; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 60%{transform:translateX(10px)} }
     </style>
 </head>
 <body>
@@ -76,17 +86,24 @@
     <div id="mute-btn">🔊</div>
 
     <div id="ui-layer">
-        <div class="score-box">
-            <div style="font-size: 24px; color: #ff6b6b;">Điểm: <span id="score">0</span></div>
+        <div class="info-box">
+            <div style="font-size: 20px; color: #ff6b6b;">Điểm: <span id="score">0</span></div>
             <div style="font-size: 14px; color: #888;">Kỷ lục: <span id="high-score">0</span></div>
+        </div>
+        <br>
+        <div class="info-box">
+            <div id="hearts">❤️❤️❤️</div>
         </div>
     </div>
 
     <div id="overlay">
         <div class="menu-content">
             <img src="usagi1.png" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid #ff8fa3; margin-bottom: 10px;">
-            <h1 style="color: #ff8fa3; font-size: 26px; margin: 10px 0;"> Usagi ăn cả nhà mày🐰</h1>
-            <p style="color: #666;">Di chuột hoặc Vuốt tay để ăn!</p>
+            <h1 style="color: #ff8fa3; font-size: 24px; margin: 10px 0;">ĐỪNG BỎ PHÍ ĐỒ ĂN!</h1>
+            <p style="color: #666; font-size: 14px;">
+                Rớt 1 món = Mất 1 Tim 💔<br>
+                Chạm quái vật = Thua luôn 👺
+            </p>
             <button class="play-button" id="start-btn">CHƠI NGAY</button>
         </div>
     </div>
@@ -101,28 +118,25 @@
     const imgNormal = new Image(); imgNormal.src = 'usagi1.png';
     const imgEating = new Image(); imgEating.src = 'usagi.jpg';
     
-    // Âm thanh
     const bgMusic = new Audio('chiikawa.mp3');
-    bgMusic.loop = true; // Tự động lặp lại
-    bgMusic.volume = 0.4; // Âm lượng nhạc nền vừa phải
+    bgMusic.loop = true; bgMusic.volume = 0.4;
 
     const sound1 = new Audio('una.mp3');
     const sound2 = new Audio('una1.mp3');
 
-    // Preload
+    // Tải trước (Preload)
     [bgMusic, sound1, sound2].forEach(s => s.load());
 
-    // Xử lý lỗi
     const showError = (msg) => {
         const el = document.getElementById('error-msg');
         el.style.display = 'block';
-        el.innerText = "Lỗi tải file: " + msg;
+        el.innerText = "Thiếu file: " + msg;
     };
     imgNormal.onerror = () => showError('usagi1.png');
     imgEating.onerror = () => showError('usagi.jpg');
     bgMusic.onerror = () => showError('chiikawa.mp3');
 
-    let width, height, score = 0, gameActive = false;
+    let width, height, score = 0, lives = 3, gameActive = false;
     let items = [], frame = 0, speed = 4;
     let isEatingTimer = 0; 
     let isMuted = false;
@@ -151,23 +165,46 @@
     canvas.addEventListener('touchstart', handleTouch, {passive: false});
     canvas.addEventListener('touchmove', handleTouch, {passive: false});
 
-    // --- GAME LOGIC ---
+    // --- LOGIC GAME ---
+    function updateHearts() {
+        let h = '';
+        for(let i=0; i<lives; i++) h += '❤️';
+        for(let i=lives; i<3; i++) h += '🖤'; // Tim đen khi mất máu
+        document.getElementById('hearts').innerHTML = h;
+    }
+
+    function gameOver() {
+        gameActive = false;
+        bgMusic.pause(); bgMusic.currentTime = 0;
+        document.getElementById('overlay').classList.remove('hidden');
+        document.body.style.cursor = 'default';
+        
+        // Cập nhật text trong Menu
+        const reason = lives <= 0 ? "Bỏ phí đồ ăn nhiều quá!duma😭" : "Bị quái vật bắt cmnr 👺";
+        document.querySelector('.menu-content h1').innerText = "GAME OVER";
+        document.querySelector('.menu-content p').innerText = reason;
+
+        const oldHigh = localStorage.getItem('usagi_score') || 0;
+        if(score > oldHigh) {
+            localStorage.setItem('usagi_score', score);
+            document.getElementById('high-score').innerText = score;
+        }
+    }
+
     document.getElementById('start-btn').onclick = () => {
         document.getElementById('overlay').classList.add('hidden');
         document.body.style.cursor = 'none';
-        score = 0; items = []; speed = 5; frame = 0;
+        
+        // Reset Game
+        score = 0; items = []; speed = 5; frame = 0; lives = 3;
         document.getElementById('score').innerText = '0';
+        updateHearts();
+        
         gameActive = true;
-        
-        // Bắt đầu phát nhạc
-        if(!isMuted) {
-            bgMusic.play().catch(e => console.log("Music play blocked", e));
-        }
-        
+        if(!isMuted) bgMusic.play().catch(()=>{});
         update();
     };
 
-    // Nút tắt/bật tiếng
     document.getElementById('mute-btn').onclick = function() {
         isMuted = !isMuted;
         this.innerText = isMuted ? '🔇' : '🔊';
@@ -178,19 +215,18 @@
     function playRandomSound() {
         if(isMuted) return;
         const s = (Math.random() > 0.5 ? sound1 : sound2).cloneNode();
-        s.volume = 0.8; 
-        s.play().catch(e => {});
+        s.volume = 0.8; s.play().catch(()=>{});
     }
 
     function spawn() {
         const r = Math.random();
         let item = { x: Math.random() * (width - 50) + 25, y: -60, rot: 0, size: 50 };
         
-        if (r > 0.3) { 
+        if (r > 0.25) { // 75% là đồ ăn
             const foods = ['🍰', '🥐', '🍗', '🍕', '🌭', '🍣','🥚','🍖'];
             item.e = foods[Math.floor(Math.random() * foods.length)];
             item.type = 'good'; 
-        } else { 
+        } else { // 25% là quái vật
             item.e = '👺'; 
             item.type = 'bad'; 
             item.size = 60; 
@@ -208,9 +244,9 @@
         // Vẽ Usagi
         const currentImg = (isEatingTimer > 0) ? imgEating : imgNormal;
         if (isEatingTimer > 0) isEatingTimer--;
-
         ctx.drawImage(currentImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
 
+        // Tăng tốc độ rơi theo điểm
         if (frame % Math.max(15, 45 - Math.floor(score/5)) === 0) spawn();
 
         for (let i = items.length - 1; i >= 0; i--) {
@@ -226,28 +262,36 @@
             ctx.restore();
 
             const hitDist = window.innerWidth < 600 ? 50 : 60; 
+            
+            // 1. Xử lý va chạm
             if (Math.hypot(player.x - o.x, player.y - o.y) < hitDist) {
                 if (o.type === 'bad') {
-                    // Game Over
-                    gameActive = false;
-                    bgMusic.pause(); bgMusic.currentTime = 0; // Dừng nhạc nền
-                    document.getElementById('overlay').classList.remove('hidden');
-                    document.body.style.cursor = 'default';
-                    
-                    const oldHigh = localStorage.getItem('usagi_score') || 0;
-                    if(score > oldHigh) {
-                        localStorage.setItem('usagi_score', score);
-                        document.getElementById('high-score').innerText = score;
-                    }
+                    gameOver(); // Chạm quái vật = Chết luôn
+                    return;
                 } else {
-                    // Ăn điểm
                     score += 1;
                     document.getElementById('score').innerText = score;
                     playRandomSound(); 
                     isEatingTimer = 20; 
                     items.splice(i, 1);
                 }
-            } else if (o.y > height + 50) items.splice(i, 1);
+            } 
+            // 2. Xử lý khi rơi ra ngoài màn hình
+            else if (o.y > height + 50) {
+                if (o.type === 'good') {
+                    // Mất máu nếu đồ ăn rơi
+                    lives--;
+                    updateHearts();
+                    document.getElementById('game-container').classList.add('shake'); // Rung màn hình
+                    setTimeout(()=>document.getElementById('game-container').classList.remove('shake'), 400);
+
+                    if (lives <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+                items.splice(i, 1);
+            }
         }
         requestAnimationFrame(update);
     }
